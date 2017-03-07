@@ -83,7 +83,7 @@ BOOL CALLBACK SaveMAPDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 BOOL CALLBACK MapDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
 
 CMapDeckDlg::CMapDeckDlg()
-:rectID(0), mouseOn(0), nBands(22)
+:rectID(0), mouseOn(0), nBands(22), lastTrackPosT(0), lastTrackPosC(0)
 {
 	savedslotname.push_back("");
 	savedslotname.push_back("");
@@ -386,8 +386,8 @@ void CMapDeckDlg::InitDraw(HDC hdc)
 
 	CPen pen;
 
-	SetControlPosFont(dc, IDC_LOW, "Arial12", rtChan[1].left, rtChansel.top+wasay/4*3);
-	SetControlPosFont(dc, IDC_HIGH, "Arial12", rtChan[20].left, rtChansel.top+wasay/4*3);
+	SetControlPosFont(dc, IDC_LOW, "Arial12", rtChan[1].left, rtChansel.top+wasay*3/4);
+	SetControlPosFont(dc, IDC_HIGH, "Arial12", rtChan[20].left, rtChansel.top+wasay*3/4);
 
 	int res;
 
@@ -395,10 +395,10 @@ void CMapDeckDlg::InitDraw(HDC hdc)
 				rtColorPal.left-40, rtColorPal.top, 40, rtColorPal.Height(), hDlg, (HMENU)(IDC_SBAR_T), hInst, NULL);
 	HWND hSlider2 = ::CreateWindow (TRACKBAR_CLASS, "", WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS|TBS_BOTH|TBS_VERT|TBS_FIXEDLENGTH, 
 				rtColorPal.right, rtColorPal.top, 40, rtColorPal.Height(), hDlg, (HMENU)(IDC_SBAR_C), hInst, NULL);
-	::SendMessage (hSlider1, TBM_SETRANGE, TRUE, MAKELONG(-2, 2));
+	::SendMessage (hSlider1, TBM_SETRANGE, TRUE, MAKELONG(-5, 5));
 	::SendMessage (hSlider1, TBM_SETPAGESIZE, 0, (LPARAM)1);
 	::SendMessage (hSlider1, TBM_SETPOS, 0, -1);
-	::SendMessage (hSlider2, TBM_SETRANGE, TRUE, MAKELONG(-2, 2));
+	::SendMessage (hSlider2, TBM_SETRANGE, TRUE, MAKELONG(-5, 5));
 	::SendMessage (hSlider2, TBM_SETPAGESIZE, 0, (LPARAM)1);
 	::SendMessage (hSlider2, TBM_SETPOS, 0, -1);
 	res = ::ShowWindow (hSlider1, SW_SHOW);
@@ -415,11 +415,24 @@ int CMapDeckDlg::CountSelected()
 
 void CMapDeckDlg::OnVScroll(HWND hwndCtl, UINT code, int pos)
 {
-	int res = ::SendMessage (hwndCtl, TBM_GETPOS, 0, 0);
-	if (code==SB_PAGELEFT)
-	{
-		double ff=203.;
-	}
+	if (code==SB_ENDSCROLL)		return;
+	char buf[16];
+	string tc;
+	int id = GetDlgCtrlID(hwndCtl);
+	if (id==IDC_SBAR_T) tc = "T ";
+	else if (id==IDC_SBAR_C)	tc = "C ";
+	int diff;
+	if (id==IDC_SBAR_T) diff = lastTrackPosT - pos;
+	else if (id==IDC_SBAR_C) diff = lastTrackPosC - pos;
+
+	if (diff==0) return;
+	else if (diff>0) sprintf(buf, "+%d", diff);
+	else sprintf(buf, "%d", diff);
+	tc += buf; 
+	SetPresenter(TC, tc);
+
+	if (id==IDC_SBAR_T) lastTrackPosT = pos;
+	else if (id==IDC_SBAR_C)	lastTrackPosC = pos;
 //	::SendMessage (hwndCtl, TBM_SETPOS, TRUE, pos);
 
 }
@@ -746,7 +759,7 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 			else	SetRadioCtlFont(k, "Arial10", -1, -1)
 		ReleaseDC(NULL, hdc);
 
-		argstr = "SET OPEN ";
+		argstr = "SET OPENTC ";
 		argstr += mapfname[idc-IDC_500];
 		SetPresenter(RATE, argstr);
 		currentRateID = idc-IDC_500;
@@ -759,7 +772,7 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 		//	else				argstr += '0'; 
 		//}
 		//SetPresenter(ONOFF, argstr);
-		//SetPresenter(FB, "");
+		SetPresenter(FB, "");
 		//res = GetCheckedRadioButton(IDC_CHANSEL_ALL, IDC_CHANSEL_ODD);
 		//if (res<=0)
 		//{
@@ -895,7 +908,7 @@ int CMapDeckDlg::Getsubj(string fname, char *estr)
 				returned += str4pipe + "\n";
 				MessageBox(PipeReturnMsg, returned.c_str(), 0);
 			}
-			else // success, if SET OPEN, get the electrode selection info
+			else // success, if SET OPENTC, get the electrode selection info
 			{
 				strcpy(subj, PipeReturnMsg+8);
 				return 1;
@@ -1541,12 +1554,17 @@ void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 		if(argstr.length()==0)
 		{ // this doesn't seem to be in use.
 			argstr = mapfname[res];
-			str4pipe = "SET OPEN "; 
+			str4pipe = "SET OPENTC "; 
 			str4pipe += argstr;
 		}
 		else
 			str4pipe = argstr;
 		break;
+
+	case TC:
+		str4pipe = "SET "; str4pipe += argstr;
+		break;
+
 	case EQ:
 		str4pipe = "SET EQS "; str4pipe += argstr;
 		break;
@@ -1592,8 +1610,9 @@ void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 				returned += str4pipe + "\n";
 				MessageBox(PipeReturnMsg, returned.c_str(), 0);
 			}
-			else // success, if SET OPEN, get the electrode selection info
+			else // success, if SET OPENTC, get the electrode selection info
 			{
+				// check this scope.... 
 				res = str2vect(sorted, str4pipe.c_str(), " ");
 				if (res>2 && sorted[1]=="OPEN")
 				{

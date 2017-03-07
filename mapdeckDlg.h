@@ -14,6 +14,7 @@ enum SETCOMMAND
 	Q,
 	BL,
 	EQ,
+	TC,
 	DUMMY,
 } ;
 
@@ -23,6 +24,7 @@ class CMapDeckDlg : public CWndDlg
 public:
 	char iniFile[256];
 	char mapdir[256];
+	int lastTrackPosT, lastTrackPosC;
 
 	CFileDlg fileDlg;
 	int nBands;

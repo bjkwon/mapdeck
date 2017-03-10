@@ -23,18 +23,43 @@ void SetControlPosFont(HWND hDlg, HDC hdc, int ID, HFONT _fnt, int XPOS, int YPO
 	GetTextExtentPoint32(hdc, buf, strlen(buf), &sz);
 	if (XPOS>=0 && YPOS>=0)	MoveWindow( GetDlgItem(hDlg, ID), XPOS, YPOS, sz.cx, sz.cy, 1);
 }
-	
+
+void QuickSocketThread (PVOID var)
+{
+	string name, returned;
+	char str4pipe[256];
+	strcpy(str4pipe, (char*)var);
+	int res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe, PipeReturnMsg, sizeof(PipeReturnMsg));
+	if (res<=0)
+	{ // TransSocket error
+
+	}
+	else
+	{
+		if (strncmp(PipeReturnMsg,"SUCCESS", 6)) // if not success, show on the screen; otherwise, do nothing
+		{
+			returned = "Error -- ";
+			returned += strcat(str4pipe, "\n");
+			MessageBox(hWavDeck.hDlg, returned.c_str(), PipeReturnMsg, 0);
+		}
+		else // success
+		{
+
+		}
+	}
+
+}
+
 BOOL CALLBACK QSubmitDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
 	static HFONT efont1;
 	static int chosen(-1);
 	LOGFONT      lf;
 	HDC	hdc;
-	char buf[256], errstr[256];
 	CFileDlg fileDlg;
-	int id, res;
-	string name, str4pipe, returned;
-	char fname[MAX_PATH], fullfname[MAX_PATH];
+	int id;
+	static string str4pipe;
+	string name, returned;
 	static string lastfile;
 	switch (umsg)
 	{
@@ -70,24 +95,7 @@ BOOL CALLBACK QSubmitDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 			break;
 		case IDC_SUBMIT:
 			sformat(str4pipe, 64, "SET RATINGS %d", chosen);
-			res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe.c_str(), PipeReturnMsg, sizeof(PipeReturnMsg));
-			if (res<=0)
-			{ // TransSocket error
-
-			}
-			else
-			{
-				if (strncmp(PipeReturnMsg,"SUCCESS", 6)) // if not success, show on the screen; otherwise, do nothing
-				{
-					returned = "Error -- ";
-					returned += str4pipe + "\n";
-					MessageBox(hDlg, returned.c_str(), PipeReturnMsg, 0);
-				}
-				else // success
-				{
-
-				}
-			}
+			_beginthread (QuickSocketThread, 0, (void*)str4pipe.c_str());
 			DeleteObject (efont1);
 			EndDialog(hDlg, 1);
 			break;
@@ -300,6 +308,7 @@ void CWavDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	int width;
 	RECT wndrt;
 	char fullfname[MAX_PATH], fname[MAX_PATH], errstr[MAX_PATH];
+	static char buffer[256];
 	switch(idc)
 	{
 	case IDC_OPEN:
@@ -320,6 +329,8 @@ void CWavDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	case IDC_PLAY3:
 	case IDC_PLAY4:
 		continuePlay = true;
+		strcpy(buffer, "SET RATINGS");
+		_beginthread (QuickSocketThread, 0, (void*)buffer);
 	case ID_PLAYSINGLE:
 		playCount = 1;
 		beginID = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
@@ -479,8 +490,8 @@ int CWavDeckDlg::UpdateINI(const char* fname, char *estr)
 }
 void CWavDeckDlg::OnNotify(int idcc, NMHDR *pnm)
 {
-	int res(0), iSel, clickedRow;
-	char buf[256], buf1[256], buf2[256];
+	int res(0), iSel;
+	char buf1[256], buf2[256];
 	NMITEMACTIVATE *pnmitem = (NMITEMACTIVATE*)pnm;
 	LPNMLVKEYDOWN lvnkeydown = (LPNMLVKEYDOWN)pnm;
 	switch(pnm->code)

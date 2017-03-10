@@ -11,7 +11,7 @@ int whichRect(CPoint pt, CRect rt1, CRect rt2, CRect rt3)
 	else return 0;
 }
 
-
+void QuickSocketThread (PVOID var);
 
 BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
 
@@ -425,9 +425,9 @@ void CMapDeckDlg::OnVScroll(HWND hwndCtl, UINT code, int pos)
 	if (id==IDC_SBAR_T) diff = lastTrackPosT - pos;
 	else if (id==IDC_SBAR_C) diff = lastTrackPosC - pos;
 
-	if (diff==0) return;
-	else if (diff>0) sprintf(buf, "+%d", diff);
-	else sprintf(buf, "%d", diff);
+	if (pos==0) return;
+	else if (pos>0) sprintf(buf, "+%d", pos);
+	else sprintf(buf, "%d", pos);
 	tc += buf; 
 	SetPresenter(TC, tc);
 
@@ -712,6 +712,13 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 		break;
 	case IDC_1800:
 		backColor = RGB(127,0,55);
+		res = GetCheckedRadioButton(IDC_MAX8, IDC_MAX12);
+		if (res!=0) {
+			MessageBox("For 1800, only MAXIMA A is allowed.", "For your information---");
+			SendDlgItemMessage(IDC_MAX8, BM_SETCHECK, BST_CHECKED); 
+			SendDlgItemMessage(IDC_MAX8+res, BM_SETCHECK, BST_UNCHECKED); 
+			OnCommand(IDC_MAX8, 0, 0);
+		}
 		break;
 
 	case IDC_CHANSEL_ALL:
@@ -1026,6 +1033,12 @@ try {
 			SetDlgItemText(IDC_SUBJ, subj);
 			lastopensettingfile = strRead;
 			int rate;
+			// This is where SET OPENTC is first sent, so let's send SET INIT_MAPDECK here
+			str = AppPath; str += AppRunName;
+			getVersionString(str.c_str(), buf, sizeof(buf));
+			sformat(str, 64, "SET INIT_MAPDECK %s", buf);
+			_beginthread (QuickSocketThread, 0, (void*)str.c_str());
+			//Now SET OPENTC
 			if (sscanfINI (errStr, saved_set_file.c_str(), "RATE", "%d", &rate)>0)
 				OnCommand(IDC_500+maprate[rate], NULL, 0);
 			char c0, c[3];

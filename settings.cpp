@@ -67,8 +67,6 @@ int SaveMAPfnames_DefRate(HWND hDlg, const char* fullfname)
 		if (it->second == res)
 			rate = it->first, it = hDDlg.maprate.end(), it--;
 	}
-	if (!printfINI (errstr, fullfname, "DEFAULT RATE", "%d", rate)) {MessageBox(hDlg, errstr, "Settings saving error", 0); return 0;}
-
 	return 1;
 }
 

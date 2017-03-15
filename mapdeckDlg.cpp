@@ -415,24 +415,25 @@ int CMapDeckDlg::CountSelected()
 
 void CMapDeckDlg::OnVScroll(HWND hwndCtl, UINT code, int pos)
 {
-	if (code==SB_ENDSCROLL)		return;
+	if (code==SB_ENDSCROLL)		
+		return;
 	char buf[16];
 	string tc;
 	int id = GetDlgCtrlID(hwndCtl);
 	if (id==IDC_SBAR_T) tc = "T ";
 	else if (id==IDC_SBAR_C)	tc = "C ";
-	int diff;
-	if (id==IDC_SBAR_T) diff = lastTrackPosT - pos;
-	else if (id==IDC_SBAR_C) diff = lastTrackPosC - pos;
+//	int diff;
+//	if (id==IDC_SBAR_T) diff = lastTrackPosT - pos;
+//	else if (id==IDC_SBAR_C) diff = lastTrackPosC - pos;
 
-	if (pos==0) return;
-	else if (pos>0) sprintf(buf, "+%d", pos);
-	else sprintf(buf, "%d", pos);
+	if (pos==0) sprintf(buf, "0");
+	else if (pos>0) sprintf(buf, "-%d", pos);
+	else sprintf(buf, "+%d", -pos);
 	tc += buf; 
 	SetPresenter(TC, tc);
 
-	if (id==IDC_SBAR_T) lastTrackPosT = pos;
-	else if (id==IDC_SBAR_C)	lastTrackPosC = pos;
+//	if (id==IDC_SBAR_T) lastTrackPosT = pos;
+//	else if (id==IDC_SBAR_C)	lastTrackPosC = pos;
 //	::SendMessage (hwndCtl, TBM_SETPOS, TRUE, pos);
 
 }
@@ -550,6 +551,7 @@ void CMapDeckDlg::RetrieveSettings(int id)
 	CString fname;
 	string strRead;
 	vector<string> vec;
+	int res;
 	fname.Format("%s%s.%s.saved.ini", AppPath, AppName, subj);
 	sprintf(buf, "SAVED%d", id);
 	try {
@@ -558,13 +560,25 @@ void CMapDeckDlg::RetrieveSettings(int id)
 		strRead = vec[1];
 		str2vect(vec, strRead.c_str(), " ");
 		sscanf(vec[0].c_str(), "%d", &currentRateID);
+		for (int k=IDC_MAX8; k<=IDC_MAX12; k++)
+		{
+			int dd = (char)vec[1][1]-'A';
+			if (k==IDC_MAX8+(char)vec[1][1]-'A')	
+				SendDlgItemMessage(k, BM_SETCHECK, BST_CHECKED);
+			else 
+				SendDlgItemMessage(k, BM_SETCHECK, BST_UNCHECKED);
+		}
+		res = -GetCheckedRadioButton(IDC_MAX8, IDC_MAX12);
+		SetPresenter(MAX, itoa(res, buf, 10));
 		SendMessage(WM_COMMAND, MAKELONG(IDC_500+currentRateID,BN_CLICKED), 0);
-		for (int k(IDC_FREQTABLE_A); k<IDC_MAX8; k++)
-			if (k==IDC_FREQTABLE_A+(char)vec[1][0]-'A')	SendDlgItemMessage(k, BM_SETCHECK, BST_CHECKED);
-			else SendDlgItemMessage(k, BM_SETCHECK, BST_UNCHECKED);
-		for (int k(IDC_MAX8); k<=IDC_MAX12; k++)
-			if (k==IDC_MAX8+(char)vec[1][1]-'A')	SendDlgItemMessage(k, BM_SETCHECK, BST_CHECKED);
-			else SendDlgItemMessage(k, BM_SETCHECK, BST_UNCHECKED);
+		for (int k=IDC_FREQTABLE_A; k<IDC_MAX8; k++)
+		{
+			int dd = (char)vec[1][0]-'A';
+			if (k==IDC_FREQTABLE_A+(char)vec[1][0]-'A')	
+				SendDlgItemMessage(k, BM_SETCHECK, BST_CHECKED);
+			else 
+				SendDlgItemMessage(k, BM_SETCHECK, BST_UNCHECKED);
+		}
 		for (int k(0); k<3; k++) 
 		{
 			eqgains[k] = letter2gain((char)vec[2][k]);
@@ -585,6 +599,7 @@ void CMapDeckDlg::RetrieveSettings(int id)
 			else				argstr += '0'; 
 		}
 		SetPresenter(ONOFF, argstr);
+		SetPresenter(FB, "");
 	}
 	catch(int e) {
 
@@ -634,9 +649,6 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	//fclose(fp);
 	switch(idc)
 	{
-	//case IDCANCEL:
-	//	OnDestroy();
-	//	break;
 	case ID_SETTINGS:
 		DialogBox(hInst, MAKEINTRESOURCE(IDD_SETTINGS), hDlg, SettingsDlgProc);
 		break;
@@ -665,40 +677,6 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 					if (savedslotname[k].size()>0)	EnableDlgItem(hDlg, IDC_SAVED1+k, 1);
 					else				EnableDlgItem(hDlg, IDC_SAVED1+k, 0);
 		}
-
-		//res1 = InputBox("Save current MAP settings?", "Please type name for this MAP", buf, sizeof(buf));
-		//if (res1==1 && strlen(buf)>0)
-		//{
-		//	//which button?
-		//	ShowDlgItem (hDlg, IDC_STATIC_WHICHBUTTON, SW_SHOW);
-		//	::GetWindowRect(GetDlgItem(IDC_STATIC_WHICHBUTTON), &rct);
-		//	::MoveWindow( GetDlgItem(IDC_STATIC_WHICHBUTTON), rtCamera.left+rtCamera.Width()/6, rtCamera.top+rtCamera.Height()/3, rct.Width(), rct.Height(), 0);
-		//	for (int k(0); k<4; k++)
-		//		EnableDlgItem(hDlg, IDC_SAVED1+k, 1);
-		//	strcpy(savedmapname,buf);
-		//}
-		break;
-
-	case IDC_SUBMIT:
-		GetDlgItemText(IDC_RATINGS, buf, sizeof(buf));
-		pipestr = "SET RATINGS "; pipestr += buf;
-		res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, pipestr.c_str(), PipeReturnMsg, sizeof(PipeReturnMsg));
-		if (res<=0)
-		{
-			::GetLastErrorStr(WSAGetLastError(), PipeReturnMsg);
-			returned = "Error -- ";
-			returned += pipestr;
-			MessageBox(PipeReturnMsg, returned.c_str(), 0);
-		}
-		else
-		{
-			if (strncmp(PipeReturnMsg,"SUCCESS", 6)) // if not success, show on the screen; otherwise, do nothing
-			{
-				returned = "Error -- ";
-				returned += pipestr + "\n";
-				MessageBox(returned.c_str(), PipeReturnMsg, 0);
-			}
-		}
 		break;
 
 	case IDC_500:
@@ -713,7 +691,7 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	case IDC_1800:
 		backColor = RGB(127,0,55);
 		res = GetCheckedRadioButton(IDC_MAX8, IDC_MAX12);
-		if (res!=0) {
+		if (res>0) {
 			MessageBox("For 1800, only MAXIMA A is allowed.", "For your information---");
 			SendDlgItemMessage(IDC_MAX8, BM_SETCHECK, BST_CHECKED); 
 			SendDlgItemMessage(IDC_MAX8+res, BM_SETCHECK, BST_UNCHECKED); 
@@ -770,27 +748,6 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 		argstr += mapfname[idc-IDC_500];
 		SetPresenter(RATE, argstr);
 		currentRateID = idc-IDC_500;
-		////When a stimrate button is pressed, it sends other MAP info to the presenter
- 	//    // Chan selection --> This should be sent before FB, because it resets the FB to the default.
-		//argstr="";
-		//for (int k=0; k<nBands; k++)
-		//{
-		//	if (selected[k]>1)	argstr += '1';
-		//	else				argstr += '0'; 
-		//}
-		//SetPresenter(ONOFF, argstr);
-		SetPresenter(FB, "");
-		//res = GetCheckedRadioButton(IDC_CHANSEL_ALL, IDC_CHANSEL_ODD);
-		//if (res<=0)
-		//{
-		//	res = GetCheckedRadioButton(IDC_MAX8, IDC_MAX12);
-		//	SetPresenter(MAX, itoa(res, buf, 10));
-		//}
-
-		//// Equalizer
-		//if (eqgains[0]!=0 || eqgains[1]!=0 || eqgains[2]!=0)
-		//	EQUpdate();
-
 		InvalidateRect(rtStimrate);
 	}
 	else if (idc>=IDC_CHANSEL_ALL && idc<=IDC_CHANSEL_ODD)
@@ -838,48 +795,6 @@ void CMapDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	}
 
 }
-
-/*
-void CMapDeckDlg::OnFlyArrived(WORD command, WORD len, void* inBuffer)
-{
-	string buf;
-	switch (command)
-	{
-	case FL_PREPARE:
-		//buf = (char*)inBuffer;
-		//EditPrintf(hLog, (buf+"\n").c_str());
-		//if (buf.find("SUCCESS")!=string::npos)
-		//{
-		//	FER(flySendText (FL_PRESENT, ""));
-		//	EditPrintf(hLog, "PRESENT\n");
-		//}
-		break;
-	
-	case FL_PRESENT:
-		//buf = (char*)inBuffer;
-		//EditPrintf(hLog, (buf+"\n").c_str());
-		break;
-	case FL_STREAM:
-		//buf = (char*)inBuffer;
-		//EditPrintf(hLog, (buf+"\n").c_str());
-		//if (buf=="STIM:START")
-		//	ListView_SetSelectionMark (hList, playID-1);
-		//if (buf=="STIM:END")
-		//	if (continuePlay)
-		//	{
-		//		iPos = ListView_GetNextItem(hList, -1, LVNI_SELECTED);
-		//		ListView_SetItemState (hList, iPos, 0, LVNI_SELECTED);
-		//		if (playID++<ListView_GetItemCount (hList)-1)
-		//			OnCommand(IDC_PLAY, GetDlgItem(IDC_PLAY), 0);
-		//		else
-		//			playID=0;
-		//	}
-
-		break;
-	}
-}
-*/
-
 void CMapDeckDlg::OnSize(UINT state, int cx, int cy)
 {
 
@@ -987,8 +902,8 @@ try {
 			return -1;
 		}
 	}
-	int res1, ind(1010);
-	size_t res2, res0(999);
+	int res1;
+	size_t res2, ind(1010), res0(999);
 	if ((res1=ReadINI (errStr, fname.c_str(), "MAP_DIRECTORY", strRead))>0)
 	{
 		vector<string> cut, cut2;

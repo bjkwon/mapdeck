@@ -23,8 +23,6 @@ BOOL CALLBACK RatingDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 		return 1;
 
 	case WM_COMMAND:
-		break;
-
 		return 1;
 	}
 	return 0;
@@ -154,12 +152,12 @@ BOOL CMapDeckDlg::OnInitDialog(HWND hwndFocus, LPARAM lParam)
 	hc = LoadImage(hInst,MAKEINTRESOURCE(IDB_CAMERA), IMAGE_BITMAP, 0, 0, LR_DEFAULTSIZE);
 	::SendMessage(GetDlgItem(IDC_CAMERA),BM_SETIMAGE, (WPARAM)IMAGE_BITMAP,(LPARAM)hc);
 	
-	InitDraw(hdc);
-	ReleaseDC(NULL, hdc);
-
 	DWORD dw = sizeof(buf);
 	GetComputerName(buf, &dw);
 	sprintf (iniFile, "%s%s.%s.ini", AppPath, AppName, buf);
+	InitDraw(iniFile, hdc);
+	ReleaseDC(NULL, hdc);
+
 	if (!ReadINI_UpdateScreen(iniFile, errstr))
 	{
 		// When last open settings are not available, make the screen arrngement blank except CONTRAST (set A) because that's not part of MAP---everything else will be set as a MAP is retrived.
@@ -297,7 +295,7 @@ void CMapDeckDlg::DrawFTMAX(CDC dc, CRect rt, int radiobutton0)
 }
 
 
-void CMapDeckDlg::InitDraw(HDC hdc)
+void CMapDeckDlg::InitDraw(const char* inifile, HDC hdc)
 {
 	char buf[64];
 	CSize sz, tpp;
@@ -395,10 +393,16 @@ void CMapDeckDlg::InitDraw(HDC hdc)
 				rtColorPal.left-40, rtColorPal.top, 40, rtColorPal.Height(), hDlg, (HMENU)(IDC_SBAR_T), hInst, NULL);
 	HWND hSlider2 = ::CreateWindow (TRACKBAR_CLASS, "", WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS|TBS_BOTH|TBS_VERT|TBS_FIXEDLENGTH, 
 				rtColorPal.right, rtColorPal.top, 40, rtColorPal.Height(), hDlg, (HMENU)(IDC_SBAR_C), hInst, NULL);
-	::SendMessage (hSlider1, TBM_SETRANGE, TRUE, MAKELONG(-5, 5));
+
+
+	char errStr[256];
+	if (sscanfINI (errStr, inifile, "TC_ADJ_STEPS", "%d", &res)<=0) res = 5;
+	res = min(max(res,5),10);
+
+	::SendMessage (hSlider1, TBM_SETRANGE, TRUE, MAKELONG(-res, res));
 	::SendMessage (hSlider1, TBM_SETPAGESIZE, 0, (LPARAM)1);
 	::SendMessage (hSlider1, TBM_SETPOS, 0, -1);
-	::SendMessage (hSlider2, TBM_SETRANGE, TRUE, MAKELONG(-5, 5));
+	::SendMessage (hSlider2, TBM_SETRANGE, TRUE, MAKELONG(-res, res));
 	::SendMessage (hSlider2, TBM_SETPAGESIZE, 0, (LPARAM)1);
 	::SendMessage (hSlider2, TBM_SETPOS, 0, -1);
 	res = ::ShowWindow (hSlider1, SW_SHOW);
@@ -418,13 +422,13 @@ void CMapDeckDlg::OnVScroll(HWND hwndCtl, UINT code, int pos)
 	if (code==SB_ENDSCROLL)		
 		return;
 	char buf[16];
+//	sprintf(buf, "code=%d", code);
+//	if (code!=-1)		SendDlgItemMessage (ID_STATUSBAR, SB_SETTEXT, 1, (LPARAM)buf);
+
 	string tc;
 	int id = GetDlgCtrlID(hwndCtl);
 	if (id==IDC_SBAR_T) tc = "T ";
 	else if (id==IDC_SBAR_C)	tc = "C ";
-//	int diff;
-//	if (id==IDC_SBAR_T) diff = lastTrackPosT - pos;
-//	else if (id==IDC_SBAR_C) diff = lastTrackPosC - pos;
 
 	if (pos==0) sprintf(buf, "0");
 	else if (pos>0) sprintf(buf, "-%d", pos);
@@ -432,10 +436,11 @@ void CMapDeckDlg::OnVScroll(HWND hwndCtl, UINT code, int pos)
 	tc += buf; 
 	SetPresenter(TC, tc);
 
-//	if (id==IDC_SBAR_T) lastTrackPosT = pos;
-//	else if (id==IDC_SBAR_C)	lastTrackPosC = pos;
-//	::SendMessage (hwndCtl, TBM_SETPOS, TRUE, pos);
-
+	if (id==IDC_SBAR_C)
+	{
+		::SendMessage (GetDlgItem(IDC_SBAR_T), TBM_SETPOS, 1, pos);
+		OnVScroll(GetDlgItem(IDC_SBAR_T), -1, pos);
+	}
 }
 
 void CMapDeckDlg::OnFlyClosed()
@@ -604,9 +609,6 @@ void CMapDeckDlg::RetrieveSettings(int id)
 	catch(int e) {
 
 	}
-
-
-
 }
 
 void CMapDeckDlg::SaveMAP(int spot)
@@ -1046,7 +1048,6 @@ int CMapDeckDlg::UpdateINI(string fname, char *estr)
 	posStr.Format("%d %d %d %d", rt.left, rt.top, rt.Width(), rt.Height());
 	if (!printfINI (errStr, fname.c_str(), "MAPDECK POS", "%s", posStr.c_str())) {strcpy(estr, errStr); return 0;}
 	if (!printfINI (errStr, fname.c_str(), "LASTSUBJ", "%s", subj)) {strcpy(estr, errStr); return 0;}
-//	if (!printfINI (errStr, fname.c_str(), "MAP_DIRECTORY", "%s", mapdir)) {strcpy(estr, errStr); return 0;}
 	CString savedfname;
 	savedfname.Format("%s%s.%s.saved.ini", AppPath, AppName, subj);
 	int rate;
@@ -1071,6 +1072,9 @@ int CMapDeckDlg::UpdateINI(string fname, char *estr)
 	longstr="";
 	for (int k(0); k<22; k++) if (selected[k]==2) longstr += 'O'; else longstr += 'X';
 	if (!printfINI (errStr, savedfname.c_str(), "CHANNEL SELECTION", "%s", longstr.c_str())) {strcpy(estr, errStr); return 0;}
+
+	int res = ::SendMessage (GetDlgItem(IDC_SBAR_C), TBM_GETRANGEMAX, 0, 0);
+	if (!printfINI (errStr, fname.c_str(), "TC_ADJ_STEPS", "%d", res)) {strcpy(estr, errStr); return 0;}
 	return 1;
 }
 
@@ -1503,7 +1507,7 @@ void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 
 	case FB:
 		res = GetCheckedRadioButton(IDC_FREQTABLE_A, IDC_FREQTABLE_C);
-		argstr = res == 0 ? "1" : ( (res==1) ? "4444" : "2222" ); 
+		argstr = res == 0 ? "0" : ( (res==1) ? "4444" : "2222" ); 
 		str4pipe = "SET FBTYPE "; str4pipe += argstr;
 		break;
 

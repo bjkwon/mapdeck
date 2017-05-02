@@ -63,7 +63,7 @@ public:
 	void RetrieveSettings(int id);
 	string EnumSavedSettings(int id, int &res);
 
-	void InitDraw(HDC hdc);
+	void InitDraw(const char* inifile, HDC hdc);
 	int CountSelected();
 	void ShowSubjInWindowTitle();
 	CSize SetControlPosFont(CDC dc, int ID, const char* FONT, int XPOS, int YPOS);

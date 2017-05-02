@@ -58,26 +58,11 @@ void pipeThread (PVOID dummy) // This is a status receiving thread
 
 BOOL CALLBACK MapDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
-	int sss(0);
-	//if (umsg==WM_HSCROLL)
-	//{
-	//	FILE *fp=fopen("OnLog","at");
-	//	fprintf(fp, "WM_HSCROLL: code=%d, pos=%d\n", (UINT)(LOWORD(wParam)), (int)(short)HIWORD(wParam) );
-	//	fclose(fp);
-	//}
-	//if (umsg==WM_INITDIALOG)
-	//{
-	//	FILE *fp=fopen("OnLog","at");
-	//	fprintf(fp, "TCN_SELCHANGE=0x%x\nTRBN_THUMBPOSCHANGING=0x%x\nNM_RELEASEDCAPTURE=0x%x\nNM_CUSTOMDRAW=0x%x\n", TCN_SELCHANGE, TRBN_THUMBPOSCHANGING, NM_RELEASEDCAPTURE, NM_CUSTOMDRAW );
-	//	fclose(fp);
-	//}
-		
 	switch (umsg)
 	{
 	chHANDLE_DLGMSG (hDlg, WM_INITDIALOG, hDDlg.OnInitDialog);
 	chHANDLE_DLGMSG (hDlg, WM_VSCROLL, hDDlg.OnVScroll);
 	chHANDLE_DLGMSG (hDlg, WM_TIMER, hDDlg.OnTimer);
-//	chHANDLE_DLGMSG (hDlg, WM_CTLCOLORSTATIC, hDDlg.OnCtlColorStatic);
 	chHANDLE_DLGMSG (hDlg, WM_COMMAND, hDDlg.OnCommand);
 	chHANDLE_DLGMSG (hDlg, WM_SIZE, hDDlg.OnSize);
 	chHANDLE_DLGMSG (hDlg, WM_CLOSE, hDDlg.OnClose);
@@ -86,13 +71,6 @@ BOOL CALLBACK MapDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 	chHANDLE_DLGMSG (hDlg, WM_LBUTTONDOWN, hDDlg.OnLButtonDown);
 	chHANDLE_DLGMSG (hDlg, WM_LBUTTONUP, hDDlg.OnLButtonUp);
 	chHANDLE_DLGMSG (hDlg, WM_MOUSEWHEEL, hDDlg.OnMouseWheel);
-
-	
-//	chHANDLE_DLGMSG (hDlg, WM_KEYDOWN, hDDlg.OnKey);
-	//chHANDLE_DLGMSG (hDlg, WM_FL_ARRIVED, hDDlg.OnFlyArrived);
-	//chHANDLE_DLGMSG (hDlg, WM_FL_CLOSE, hDDlg.OnFlyClosed);
-	//chHANDLE_DLGMSG (hDlg, WM_FL_CONNECTED, hDDlg.OnFlyConnected);
-
 	default:
 		return FALSE;
 	}
@@ -104,12 +82,9 @@ BOOL CALLBACK wavDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 	switch (umsg)
 	{
 	chHANDLE_DLGMSG (hDlg, WM_INITDIALOG, hWavDeck.OnInitDialog);
-//	chHANDLE_DLGMSG (hDlg, WM_TIMER, hWavDeck.OnTimer);
-//	chHANDLE_DLGMSG (hDlg, WM_CTLCOLORSTATIC, hWavDeck.OnCtlColorStatic);
 	chHANDLE_DLGMSG (hDlg, WM_COMMAND, hWavDeck.OnCommand);
 	chHANDLE_DLGMSG (hDlg, WM_SIZE, hWavDeck.OnSize);
 	chHANDLE_DLGMSG (hDlg, WM_CLOSE, hWavDeck.OnClose);
-//	chHANDLE_DLGMSG (hDlg, WM_KEYDOWN, hWavDeck.OnKey);
 
 	case WM_NOTIFY: //This cannot be through msg cracker... 
 		hWavDeck.OnNotify((int)(wParam), (NMHDR *)lParam);

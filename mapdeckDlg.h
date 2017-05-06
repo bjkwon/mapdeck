@@ -83,6 +83,7 @@ public:
 	void OnLButtonDown(BOOL fDoubleClick, int x, int y);
 	void OnLButtonUp(BOOL fDoubleClick, int x, int y);
 	void OnMouseWheel(int xPos, int yPos, int zDelta, UINT fwKeys);
+	void OnSocketComing(int code, char *msgbox);
 
 	void EQUpdate();
 	void SetPresenter(SETCOMMAND command, string argstr);

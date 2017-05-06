@@ -13,6 +13,11 @@
 #define ID_STATUSBAR 1000
 #define ID_PLAYSINGLE 1340
 
+void TransactSocketThread (PVOID var);
+void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send);
+HWND hquick;
+
+
 void SetControlPosFont(HWND hDlg, HDC hdc, int ID, HFONT _fnt, int XPOS, int YPOS)
 {
 	char buf[256];
@@ -24,31 +29,30 @@ void SetControlPosFont(HWND hDlg, HDC hdc, int ID, HFONT _fnt, int XPOS, int YPO
 	if (XPOS>=0 && YPOS>=0)	MoveWindow( GetDlgItem(hDlg, ID), XPOS, YPOS, sz.cx, sz.cy, 1);
 }
 
-void QuickSocketThread (PVOID var)
+BOOL CALLBACK QuickProc(HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
-	string name, returned;
-	char str4pipe[256];
-	strcpy(str4pipe, (char*)var);
-	int res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe, PipeReturnMsg, sizeof(PipeReturnMsg));
-	if (res<=0)
-	{ // TransSocket error
-
-	}
-	else
+	switch (umsg)
 	{
-		if (strncmp(PipeReturnMsg,"SUCCESS", 6)) // if not success, show on the screen; otherwise, do nothing
-		{
-			returned = "Error -- ";
-			returned += strcat(str4pipe, "\n");
-			MessageBox(hWavDeck.hDlg, returned.c_str(), PipeReturnMsg, 0);
-		}
-		else // success
-		{
-
-		}
+	case WM_INITDIALOG:
+		hquick = hDlg;
+		sendsocketWthread(INITIALIZE, hDlg, "SET initialize");
+		break;
+	case WM_COMMAND:
+		if (LOWORD(wParam)==IDCANCEL)
+			demoOnly = true;
+		break;
+	case WM_SIZE:
+		break;
+	case WM_DESTROY:
+		hquick = NULL;
+		break;
+	default:
+		return FALSE;
 	}
-
+	return 1;
 }
+
+
 
 BOOL CALLBACK QSubmitDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
@@ -95,7 +99,7 @@ BOOL CALLBACK QSubmitDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 			break;
 		case IDC_SUBMIT:
 			sformat(str4pipe, 64, "SET RATINGS %d", chosen);
-			_beginthread (QuickSocketThread, 0, (void*)str4pipe.c_str());
+			if (!demoOnly) sendsocketWthread(RATINGS, hDlg, str4pipe.c_str());
 			DeleteObject (efont1);
 			EndDialog(hDlg, 1);
 			break;
@@ -329,8 +333,6 @@ void CWavDeckDlg::OnCommand(int idc, HWND hwndCtl, UINT ebent)
 	case IDC_PLAY3:
 	case IDC_PLAY4:
 		continuePlay = true;
-		strcpy(buffer, "SET RATINGS");
-		_beginthread (QuickSocketThread, 0, (void*)buffer);
 	case ID_PLAYSINGLE:
 		playCount = 1;
 		beginID = ListView_GetNextItem(hList, -1, LVNI_SELECTED);

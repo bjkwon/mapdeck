@@ -11,8 +11,8 @@ int whichRect(CPoint pt, CRect rt1, CRect rt2, CRect rt3)
 	else return 0;
 }
 
-void QuickSocketThread (PVOID var);
-
+void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send);
+BOOL CALLBACK QuickProc(HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
 
 BOOL CALLBACK RatingDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
@@ -953,8 +953,11 @@ try {
 			// This is where SET OPENTC is first sent, so let's send SET INIT_MAPDECK here
 			str = AppPath; str += AppRunName;
 			getVersionString(str.c_str(), buf, sizeof(buf));
-			sformat(str, 64, "SET INIT_MAPDECK %s", buf);
-			_beginthread (QuickSocketThread, 0, (void*)str.c_str());
+
+			DialogBox(hInst, MAKEINTRESOURCE(IDD_WAITING), hDlg, (DLGPROC)QuickProc); 
+
+			sformat(str, "SET INIT_MAPDECK %s", buf);
+			if (!demoOnly) sendsocketWthread(SETINIT, hDlg, str.c_str());
 			//Now SET OPENTC
 			if (sscanfINI (errStr, saved_set_file.c_str(), "RATE", "%d", &rate)>0)
 				OnCommand(IDC_500+maprate[rate], NULL, 0);
@@ -1476,9 +1479,9 @@ void CMapDeckDlg::EQUpdate()
 void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 {
 	static int cumErrors(0);
-	string str4pipe, returned;
+	string str4pipe;
 	int res;
-	vector<string> sorted;
+	char buffer[512];
 	switch(command)
 	{
 	case RATE:
@@ -1519,44 +1522,33 @@ void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 		str4pipe = "SET MAX "; str4pipe += argstr;
 		break;
 	}
-	if (cumErrors<5)
+	if (!demoOnly) sendsocketWthread(SETPRESENTER, hDlg, str4pipe.c_str());
+}
+
+
+void CMapDeckDlg::OnSocketComing(int code, char *msgbox)
+{
+	size_t res;
+	vector<string> sorted;
+	char sent[256];
+	strcpy(sent, msgbox);
+	char *returned = msgbox + strlen(sent)+1;
+	switch(code)
 	{
-		res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe.c_str(), PipeReturnMsg, sizeof(PipeReturnMsg));
-		if (res<=0)
+	case SETPRESENTER:
+		res = str2vect(sorted, sent, " ");
+		if (res>2 && sorted[1]=="OPEN")
 		{
-			cumErrors++;
-			if (cumErrors==5) 
+			size_t len = strlen("SUCCESS ");
+			for (char* pt = returned + len ; pt<returned + len + 22; pt++)
 			{
-				::GetLastErrorStr(WSAGetLastError(), PipeReturnMsg);
-				returned = "Error -- ";
-				returned += str4pipe;
-				MessageBox(PipeReturnMsg, returned.c_str(), 0);
+				int k = pt - (returned + len);
+				if (*pt=='1')	selected[k]=2;
+				else if (*pt=='0')	selected[k]=0;
 			}
 		}
-		else 
-		{
-			if (strncmp(PipeReturnMsg,"SUCCESS", 6)) // if not success, show on the screen; otherwise, do nothing
-			{
-				returned = AppName;
-				returned += " ";
-				returned += str4pipe + "\n";
-				MessageBox(PipeReturnMsg, returned.c_str(), 0);
-			}
-			else // success, if SET OPENTC, get the electrode selection info
-			{
-				// check this scope.... 
-				res = str2vect(sorted, str4pipe.c_str(), " ");
-				if (res>2 && sorted[1]=="OPEN")
-				{
-					size_t len = strlen("SUCCESS ");
-					for (char* pt = PipeReturnMsg + len ; pt<PipeReturnMsg + len + 22; pt++)
-					{
-						int k = pt - (PipeReturnMsg + len);
-						if (*pt=='1')	selected[k]=2;
-						else if (*pt=='0')	selected[k]=0;
-					}
-				}
-			}
-		}
+		break;
 	}
 }
+
+

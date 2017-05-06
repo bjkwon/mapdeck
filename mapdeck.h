@@ -25,6 +25,7 @@ using namespace Gdiplus;
 #define FLYPORT_PRESENTER_STATUS_SERVER		1026
 
 #define MAXPENDING		5	
+#define WM__TRANSOCKET_DONE			WM_APP+0x2222
 
 #define MAX_WORDS_PIPEMSG	32
 #define ID_STATUSBAR	1000
@@ -36,7 +37,12 @@ extern char pipeNameStr[256];
 extern char PipeReturnMsg[4096];
 extern char remotePC[256];
 extern char remoteIPA_STATUS[256];
-
+extern HMODULE hInst;
+extern bool demoOnly;
+extern HWND QDlg;
+extern HWND hquick;
+extern HANDLE hEvent;
+extern HANDLE mt;
 void pipeThread (PVOID dummy);
 
 extern CMapDeckDlg hDDlg;
@@ -67,3 +73,11 @@ extern CMapDeckDlg hDDlg;
 #define IDD_TAB_QUALITY 100
 #define IDD_TAB_EQUALIZER 101
 #define IDD_TAB_FREQRANGE 102
+
+enum CODE : __int16
+{
+	INITIALIZE=0,
+	SETINIT,
+	SETPRESENTER,
+	RATINGS,
+};

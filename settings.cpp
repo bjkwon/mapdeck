@@ -108,24 +108,32 @@ map<string,string> RetrieveSavedFiles(const char* mappath, const char* path)
 	map<string,string> out;
 	WIN32_FIND_DATA data;
 	char buf[256], buf2[256];
-	int k(0), res(1);
+	int k(0), res(1), count(1);
 	string subj;
 
 	strcpy(buf, "*saved.ini");
 	sprintf(buf2, "%s%s", path, buf);
 	HANDLE hFind = FindFirstFile(buf2, &data);
+	FILE *fp=fopen("track.txt","wt");
+	fprintf(fp, "remotePC=%s\n", remotePC);
+	fprintf(fp, "mapdir=%s\n",hDDlg.mapdir);
+	fprintf(fp, "AppPath=%s\n",hDDlg.AppPath);
+	fprintf(fp, "lastsubj=%s\n",hDDlg.subj);
 	if (hFind!=INVALID_HANDLE_VALUE )
 	{
 		subj = checksavedfile(mappath, path, data.cFileName);
+		fprintf(fp, "file %d=%s, subj=%s\n", count++, data.cFileName, subj.c_str());
 		if (subj.size()>0) out[subj] = data.cFileName;
 		res = FindNextFile(hFind, &data);
 		while (res)
 		{
 			subj = checksavedfile(mappath, path, data.cFileName);
+			fprintf(fp, "file %d=%s, subj=%s\n", count++, data.cFileName, subj.c_str());
 			if (subj.size()>0) out[subj] = data.cFileName;
 			res = FindNextFile(hFind, &data);
 		}
 	}
+	fclose(fp);
 	return out;
 }
 

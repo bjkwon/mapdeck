@@ -6,6 +6,10 @@ char PipeReturnMsg[4096];
 char remotePC[256];
 char remoteIPA_STATUS[256];
 
+HMODULE hInst;
+bool demoOnly;
+HANDLE hEvent;
+HANDLE mt;
 
 CMapDeckDlg hDDlg;
 CWavDeckDlg hWavDeck;
@@ -71,6 +75,10 @@ BOOL CALLBACK MapDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 	chHANDLE_DLGMSG (hDlg, WM_LBUTTONDOWN, hDDlg.OnLButtonDown);
 	chHANDLE_DLGMSG (hDlg, WM_LBUTTONUP, hDDlg.OnLButtonUp);
 	chHANDLE_DLGMSG (hDlg, WM_MOUSEWHEEL, hDDlg.OnMouseWheel);
+
+	case WM__TRANSOCKET_DONE:
+		hDDlg.OnSocketComing((int)wParam, (char*)lParam);
+		break;
 	default:
 		return FALSE;
 	}
@@ -114,6 +122,10 @@ int  WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	GdiplusStartupInput gdiplusStartupInput;
 	ULONG_PTR           gdiplusToken;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+	demoOnly = false;
+	
+	hInst = hInstance;
 	
 	hDDlg.hDlg = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAPDECK), NULL, (DLGPROC)MapDeckDlgProc);
 	hWavDeck.hDlg = CreateDialogParam(hInstance, MAKEINTRESOURCE(IDD_WAVDECK), hDDlg.hDlg, (DLGPROC)wavDeckDlgProc, (LPARAM)hDDlg.iniFile);
@@ -124,7 +136,6 @@ int  WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	ShowWindow(hDDlg.hDlg, iCmdShow);
 	UpdateWindow (hDDlg.hDlg);
-
 
 
 //	FILE *fp=fopen("msg.log","at");
@@ -151,4 +162,57 @@ int  WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 //	fclose(fp);
 	GdiplusShutdown(gdiplusToken);
 	return (int)msg.wParam ;
+}
+
+void TransactSocketThread (PVOID var)
+{ // This gets called the first time---to attempt connection to Dancer
+	string name, returned;
+	int res;
+	char str4pipe[256], bigbox[8192];
+	__int16 code;
+	code = *(__int16*)var;
+//	HWND hDlg = *(HWND*)((char*)var+sizeof(code));
+	int id = *(int*)((char*)var+sizeof(code));
+	strcpy(str4pipe, (char*)var+sizeof(code)+sizeof(int));
+
+	if (!mt) 
+		mt = CreateMutex(0,1,0);
+	// Stays in the loop while TransSocket returns error
+	while ((res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe, PipeReturnMsg, sizeof(PipeReturnMsg)))<0 && !demoOnly )
+		Sleep(150);
+	if (hquick) EndDialog(hquick, 0);
+	if (!demoOnly)
+		if (code != INITIALIZE && strncmp(PipeReturnMsg,"SUCCESS", 6))
+		// if not success, show on the screen
+		{
+			returned = "Error -- ";
+			returned += strcat(str4pipe, "\n");
+			MessageBox(hWavDeck.hDlg, returned.c_str(), PipeReturnMsg, 0);
+		}
+		else
+		{
+			if (code != INITIALIZE) 
+			{
+				strcpy(bigbox, str4pipe);
+				memcpy(bigbox+strlen(str4pipe)+1, PipeReturnMsg, strlen(PipeReturnMsg)+1);
+//				res = PostThreadMessage (id, WM__TRANSOCKET_DONE, (WPARAM)code, (LPARAM)bigbox);
+	//			res = SendMessage (hDlg, WM__TRANSOCKET_DONE, (WPARAM)code, (LPARAM)bigbox);
+				hDDlg.OnSocketComing(code, bigbox);
+			}
+		}
+	res = ReleaseMutex(mt);
+	res = CloseHandle(mt); mt=NULL;
+}
+
+void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send)
+{
+	DWORD res = WaitForSingleObject(mt, INFINITE);
+	char buf[4096];
+	memcpy(buf, &code, sizeof(code));
+	int id = GetCurrentThreadId ();
+	memcpy(buf+sizeof(code), &id, sizeof(id));
+//	memcpy(buf+sizeof(code), &hDlg, sizeof(hDlg));
+//	strcpy(buf+sizeof(code)+sizeof(hDlg), msg2send);
+	strcpy(buf+sizeof(code)+sizeof(id), msg2send);
+	_beginthread (TransactSocketThread, 0, buf);
 }

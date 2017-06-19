@@ -70,7 +70,7 @@ public:
 	void DrawStimrate(CDC dc);
 	void DrawChansel(CDC dc);
 	void DrawFTMAX(CDC dc, CRect rt, int radiobutton0);
-	int GetMAPfilenames(CString settingsfile, char *estr);
+	vector<string> GetMAPfilenames(CString favedfile, char *estr);
 	int Getsubj(string fname, char *errstr);
 
 	int ReadINI_UpdateScreen(string fname, char *estr);
@@ -83,7 +83,7 @@ public:
 	void OnLButtonDown(BOOL fDoubleClick, int x, int y);
 	void OnLButtonUp(BOOL fDoubleClick, int x, int y);
 	void OnMouseWheel(int xPos, int yPos, int zDelta, UINT fwKeys);
-	void OnSocketComing(int code, char *msgbox);
+	void OnSocketComing(bool success, int code, char *msgbox);
 
 	void EQUpdate();
 	void SetPresenter(SETCOMMAND command, string argstr);

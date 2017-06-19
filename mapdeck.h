@@ -43,12 +43,14 @@ extern HWND QDlg;
 extern HWND hquick;
 extern HANDLE hEvent;
 extern HANDLE mt;
+extern HANDLE mtgetsubj;
+
+
 void pipeThread (PVOID dummy);
 
 extern CMapDeckDlg hDDlg;
 
 #define WAVILSTFILE	"wavfiles"
-
 
 //SetCtlFont sets the font and position of the control with correct size
 #define SetCtlFont(ID,FONT,XPOS,YPOS){\
@@ -80,4 +82,7 @@ enum CODE : __int16
 	SETINIT,
 	SETPRESENTER,
 	RATINGS,
+	GETSUBJ,
 };
+
+void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send);

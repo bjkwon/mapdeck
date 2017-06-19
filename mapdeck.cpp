@@ -10,9 +10,13 @@ HMODULE hInst;
 bool demoOnly;
 HANDLE hEvent;
 HANDLE mt;
+HANDLE mtComing;
 
 CMapDeckDlg hDDlg;
 CWavDeckDlg hWavDeck;
+
+FILE*fp;
+#define PRINT(STR) {fp=fopen("record","at"); fprintf(fp,STR); fclose(fp);}
 
 class CWinPP : public CWinApp 
 {
@@ -20,6 +24,31 @@ public:
 	CWinPP() {};
 	virtual ~CWinPP() {};
 };	
+
+BOOL CALLBACK QuickProc(HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
+{
+	switch (umsg)
+	{
+	case WM_INITDIALOG:
+		hquick = hDlg;
+		SetDlgItemText(hDlg, IDC_PCNAME, remotePC);
+		break;
+	case WM_COMMAND:
+		if (LOWORD(wParam)==IDOK)
+			EndDialog(hDlg, FALSE);
+		if (LOWORD(wParam)==IDCANCEL)
+			EndDialog(hDlg, TRUE);
+		break;
+	case WM_SIZE:
+		break;
+	//case WM_DESTROY:
+	//	hquick = NULL;
+	//	break;
+	default:
+		return FALSE;
+	}
+	return 1;
+}
 
 void pipeThread (PVOID dummy) // This is a status receiving thread
 {
@@ -77,7 +106,7 @@ BOOL CALLBACK MapDeckDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam
 	chHANDLE_DLGMSG (hDlg, WM_MOUSEWHEEL, hDDlg.OnMouseWheel);
 
 	case WM__TRANSOCKET_DONE:
-		hDDlg.OnSocketComing((int)wParam, (char*)lParam);
+		hDDlg.OnSocketComing(0, (int)wParam, (char*)lParam);
 		break;
 	default:
 		return FALSE;
@@ -123,9 +152,11 @@ int  WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	ULONG_PTR           gdiplusToken;
 	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
-	demoOnly = false;
-	
 	hInst = hInstance;
+	demoOnly = false;
+	mt = CreateEvent(NULL, FALSE, 1, NULL);
+	mtComing = CreateEvent(NULL, FALSE, 1, NULL);
+	mtgetsubj = CreateEvent(NULL, FALSE, 1, NULL);
 	
 	hDDlg.hDlg = CreateDialog(hInstance, MAKEINTRESOURCE(IDD_MAPDECK), NULL, (DLGPROC)MapDeckDlgProc);
 	hWavDeck.hDlg = CreateDialogParam(hInstance, MAKEINTRESOURCE(IDD_WAVDECK), hDDlg.hDlg, (DLGPROC)wavDeckDlgProc, (LPARAM)hDDlg.iniFile);
@@ -136,83 +167,69 @@ int  WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 
 	ShowWindow(hDDlg.hDlg, iCmdShow);
 	UpdateWindow (hDDlg.hDlg);
-
-
-//	FILE *fp=fopen("msg.log","at");
-//	fprintf(fp, "hDDlg.hDlg=0x%d, hWavDeck.hDlg=0x%d\n", hDDlg.hDlg, hWavDeck.hDlg);
-
-
 	while (GetMessage (&msg, NULL, 0, 0))
 	{ 
 		int res(0);
 		HWND h = GetParent(msg.hwnd);
-
-	//	fprintf(fp, "msg.hwnd=0x%d, umsg=0x%04x\n", msg.hwnd, msg.message);
-
-	/* This way the F10 key works even when the focus is on WavDeck*/
 		if (h==hWavDeck.hDlg || hDDlg.hDlg)
 			res = TranslateAccelerator(hDDlg.hDlg, hAccel, &msg);
-	//	fprintf(fp, "GetParent(msg.hwnd) = 0x%d, TranslateAccelerator(GetParent(msg.hwnd)..)=%d\n", GetParent(msg.hwnd), res);
 		if ( !res && !IsDialogMessage (hDDlg.hDlg, &msg) )
 		{
 			TranslateMessage (&msg) ;
 			DispatchMessage (&msg) ;
 		}
 	}
-//	fclose(fp);
 	GdiplusShutdown(gdiplusToken);
 	return (int)msg.wParam ;
 }
 
 void TransactSocketThread (PVOID var)
 { // This gets called the first time---to attempt connection to Dancer
+
+
 	string name, returned;
 	int res;
+	DWORD res1;
 	char str4pipe[256], bigbox[8192];
 	__int16 code;
 	code = *(__int16*)var;
-//	HWND hDlg = *(HWND*)((char*)var+sizeof(code));
 	int id = *(int*)((char*)var+sizeof(code));
 	strcpy(str4pipe, (char*)var+sizeof(code)+sizeof(int));
 
-	if (!mt) 
-		mt = CreateMutex(0,1,0);
-	// Stays in the loop while TransSocket returns error
-	while ((res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe, PipeReturnMsg, sizeof(PipeReturnMsg)))<0 && !demoOnly )
-		Sleep(150);
-	if (hquick) EndDialog(hquick, 0);
-	if (!demoOnly)
-		if (code != INITIALIZE && strncmp(PipeReturnMsg,"SUCCESS", 6))
-		// if not success, show on the screen
-		{
-			returned = "Error -- ";
-			returned += strcat(str4pipe, "\n");
-			MessageBox(hWavDeck.hDlg, returned.c_str(), PipeReturnMsg, 0);
-		}
-		else
-		{
-			if (code != INITIALIZE) 
-			{
-				strcpy(bigbox, str4pipe);
-				memcpy(bigbox+strlen(str4pipe)+1, PipeReturnMsg, strlen(PipeReturnMsg)+1);
-//				res = PostThreadMessage (id, WM__TRANSOCKET_DONE, (WPARAM)code, (LPARAM)bigbox);
-	//			res = SendMessage (hDlg, WM__TRANSOCKET_DONE, (WPARAM)code, (LPARAM)bigbox);
-				hDDlg.OnSocketComing(code, bigbox);
-			}
-		}
-	res = ReleaseMutex(mt);
-	res = CloseHandle(mt); mt=NULL;
+	char buf2[256];
+	sprintf(buf2,"(TransactSocketThread) code=%d, msg=%s\n", code, str4pipe);
+	PRINT(buf2)
+
+	if (demoOnly)
+		res = SetEvent(mt), SetEvent(mtgetsubj);
+	else
+	{
+		while (!demoOnly && (res = TransSocket (remotePC, FLYPORT_PRESENTERSERVER, str4pipe, PipeReturnMsg, sizeof(PipeReturnMsg)))<0 )
+			demoOnly = (res = DialogBox(hInst, MAKEINTRESOURCE(IDD_WAITING), NULL, (DLGPROC)QuickProc))==1; 
+		strcpy(bigbox, str4pipe);
+		memcpy(bigbox+strlen(str4pipe)+1, PipeReturnMsg, strlen(PipeReturnMsg)+1);
+		res1 = WaitForSingleObject(mtComing, INFINITE);
+		hDDlg.OnSocketComing(strncmp(PipeReturnMsg,"SUCCESS", 6)==0, code, bigbox);
+		res1 = SetEvent(mtComing);
+	}
 }
 
 void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send)
-{
-	DWORD res = WaitForSingleObject(mt, INFINITE);
-	char buf[4096];
+{ 
+	/* WaitForSingleObject should be called outside of sendsocketWthread
+	   because if it is called here, local variable buf is not protected from a racing condition
+	   5/6/2017 bjkwon
+	*/
+	// hDlg is not necessary, just keep it now in case I want it later. 
+	// function signature and  strcpy(str4pipe, .... ) line in TransactSocketThread be updated  
+	// 5/6/2017 bjk
+	static char buf[4096];
 	memcpy(buf, &code, sizeof(code));
 	int id = GetCurrentThreadId ();
 	memcpy(buf+sizeof(code), &id, sizeof(id));
-//	memcpy(buf+sizeof(code), &hDlg, sizeof(hDlg));
-//	strcpy(buf+sizeof(code)+sizeof(hDlg), msg2send);
 	strcpy(buf+sizeof(code)+sizeof(id), msg2send);
+	char buf2[4096];
+	sprintf(buf2,"(sendsocketWthread) code=%d, msg=%s\n", code, msg2send);
+	PRINT(buf2)
 	_beginthread (TransactSocketThread, 0, buf);
 }

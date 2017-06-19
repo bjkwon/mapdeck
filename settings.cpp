@@ -1,6 +1,11 @@
  #include "MapDeck.h"
 
+HANDLE mtgetsubj;
 void SetControlPosFont(HWND hDlg, HDC hdc, int ID, HFONT _fnt, int XPOS, int YPOS);
+map<string, string> savedsubjlist;
+
+extern FILE*fp;
+#define PRINT(STR) {fp=fopen("record","at"); fprintf(fp,STR); fclose(fp);}
 
 int ValidatePath(char* filewpath, char* errstr)
 {
@@ -18,24 +23,6 @@ int GetCheckedRadioButton(HWND hDlg, int ID1, int ID2)
 		if (SendDlgItemMessage(hDlg, k, BM_GETCHECK, 0, 0) == BST_CHECKED)
 			return k-ID1;
 	return -1;
-}
-
-int OpenSettings(HWND hDlg, const char* fullfname)
-{
-	char errstr[256];
-	if (hDDlg.GetMAPfilenames(fullfname, errstr)==0)
-	{
-		MessageBox(hDlg, errstr, "", 0);
-		return 0;
-	}
-	hDDlg.Getsubj("", errstr);
-
-	SetDlgItemText(hDlg, IDC_500, hDDlg.mapfname[0].c_str());
-	SetDlgItemText(hDlg, IDC_900, hDDlg.mapfname[1].c_str());
-	SetDlgItemText(hDlg, IDC_1200, hDDlg.mapfname[2].c_str());
-	SetDlgItemText(hDlg, IDC_1800, hDDlg.mapfname[3].c_str());
-	SetDlgItemText(hDlg, IDC_SUBJID, hDDlg.subj);
-	return 1;
 }
 
 int SaveMAPfnames(HWND hDlg, const char* fullfname)
@@ -84,6 +71,7 @@ int ReadMAPfnames(HWND hDlg, char * errstr)
 string checksavedfile(const char* mappath, const char* path, const char* savedfname)
 {
 	int k, res;
+	bool remote(false);
 	char buf[256], buf2[256], errStr[256];
 	string mapfile, subj, subj0, out;
 	vector<string> mapheader;
@@ -97,67 +85,125 @@ string checksavedfile(const char* mappath, const char* path, const char* savedfn
 		res = ReadINI (errStr, buf, mapheader[k].c_str(), mapfile);
 		FulfillFile(buf2, mappath, mapfile.c_str());
 		res = ReadINI (errStr, buf2, "SUBJECT ID", subj);
-		if (subj0.size()>0 && subj!=subj) break;
+		sprintf(buf, "GET SUBJ %s", buf2);
+		remote = true;
+		sendsocketWthread (GETSUBJ, 0, buf);
 	}
-	if (k==4) out = subj;
+	if (!remote)
+		if (k==4) out = subj;
 	return out;
 }
 
-map<string,string> RetrieveSavedFiles(const char* mappath, const char* path)
+void OnGetSubj(const char *favedfile, const char *mapfile, const char *subjstr)
 {
-	map<string,string> out;
-	WIN32_FIND_DATA data;
-	char buf[256], buf2[256];
-	int k(0), res(1), count(1);
-	string subj;
+	DWORD res;
+	static map<string, string> faved_subj;
+	static int count(1);
+	static string lastname;
+	bool faved_exist(false);
 
-	strcpy(buf, "*saved.ini");
-	sprintf(buf2, "%s%s", path, buf);
-	HANDLE hFind = FindFirstFile(buf2, &data);
-	FILE *fp=fopen("track.txt","wt");
-	fprintf(fp, "remotePC=%s\n", remotePC);
-	fprintf(fp, "mapdir=%s\n",hDDlg.mapdir);
-	fprintf(fp, "AppPath=%s\n",hDDlg.AppPath);
-	fprintf(fp, "lastsubj=%s\n",hDDlg.subj);
-	if (hFind!=INVALID_HANDLE_VALUE )
+	for (map<string,string>::iterator it=faved_subj.begin(); it!=faved_subj.end() && !faved_exist; it++)
+		if (it->first==string(favedfile)) 
+			faved_exist=true;
+	if (!faved_exist) faved_subj[favedfile] = subjstr;
+try {
+	for (map<string,string>::iterator it=faved_subj.begin(); it!=faved_subj.end(); it++)
 	{
-		subj = checksavedfile(mappath, path, data.cFileName);
-		fprintf(fp, "file %d=%s, subj=%s\n", count++, data.cFileName, subj.c_str());
-		if (subj.size()>0) out[subj] = data.cFileName;
-		res = FindNextFile(hFind, &data);
-		while (res)
-		{
-			subj = checksavedfile(mappath, path, data.cFileName);
-			fprintf(fp, "file %d=%s, subj=%s\n", count++, data.cFileName, subj.c_str());
-			if (subj.size()>0) out[subj] = data.cFileName;
-			res = FindNextFile(hFind, &data);
-		}
+		if (it->first==string(favedfile))
+			if (it->second!=string(subjstr))
+			{ count = 1; throw string("Subj info in .ace files shown in ") + string(favedfile) + " not consistent"; }
 	}
-	fclose(fp);
-	return out;
+
+	if (count==4 || count==1)
+		lastname = favedfile;
+	if (count==4)
+	{
+		savedsubjlist[favedfile]=subjstr;
+		count=1;
+	}
+	else
+	{
+		assert( (lastname==favedfile));
+		count++;
+	}
+	res = SetEvent(mtgetsubj);
+}
+catch(string estr)
+{
+	MessageBox(NULL, estr.c_str(), "", 0);
+	res = SetEvent(mtgetsubj);
+}
 }
 
 BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
-	char errstr[256], buf[256];
-	CFileDlg fileDlg;
+	char errstr[256], inibuf[256], buf[256], buf2[256];
 	int k, id, res, nMax, code;
 	string name, tp;
-	char fname[MAX_PATH], fullfname[MAX_PATH];
-	static string lastfile;
-	static map<string,string> savedlist;
+	WIN32_FIND_DATA data;
+	char fullfname[MAX_PATH];
+	DWORD res1;
+	HANDLE hFind ;
+	static int listcounter(0), timercounter(0);
+	static vector<string> savedfiles;
 	switch (umsg)
 	{
 	case WM_INITDIALOG:
 		SetDlgItemText(hDlg, IDC_REMOTEPC, remotePC);
 		SetDlgItemText(hDlg, IDC_MAPDIR, hDDlg.mapdir);
-		savedlist = RetrieveSavedFiles(hDDlg.mapdir, hDDlg.AppPath);
-		for (map<string,string>::iterator it=savedlist.begin(); it!=savedlist.end(); it++)
-			SendDlgItemMessage(hDlg, IDC_SUBJID, CB_ADDSTRING, 0, (LPARAM)it->first.c_str());
-		id = SendDlgItemMessage(hDlg, IDC_SUBJID, CB_FINDSTRING, (WPARAM)-1, (LPARAM)hDDlg.subj);
-		id = SendDlgItemMessage(hDlg, IDC_SUBJID, CB_SETCURSEL, id, 0);
-		SendMessage(hDlg, WM_COMMAND, MAKELONG(IDC_SUBJID, CBN_SELCHANGE), NULL);
-		return 1;
+
+		strcpy(buf, "*saved.ini");
+		FulfillFile(buf2, hDDlg.AppPath, buf);
+		hFind = FindFirstFile(buf2, &data);
+		if (hFind!=INVALID_HANDLE_VALUE )
+		{
+		vector<string> mapfname;
+		do {
+		char buf2[256];
+		int k(0);
+			FulfillFile(inibuf, hDDlg.AppPath, data.cFileName);
+			listcounter++;
+			mapfname = hDDlg.GetMAPfilenames(inibuf, errstr);
+			for (vector<string>::iterator it=mapfname.begin(); it!=mapfname.end(); it++)
+			{
+				sprintf(buf, "GET SUBJ %s", it->c_str());
+				sprintf(buf2, "k=%d,%s..waiting\n",k, buf); PRINT(buf2)
+				res1 = WaitForSingleObject(mtgetsubj, INFINITE);
+				sprintf(buf2, "k=%d, calling sendsocketWthread\n",k++, buf, it->c_str()); PRINT(buf2)
+				strcat(buf, "\t");
+				strcat(buf, inibuf);
+				sendsocketWthread (GETSUBJ, 0, buf);
+			}
+		} while (res = FindNextFile(hFind, &data));
+		}
+		//we don't know when the saved ini list is ready to show in the dlg box, so run the timer and check.
+		if (listcounter) SetTimer(hDlg, 1000, 50, NULL);
+		break;
+
+	case WM_TIMER:
+		if (timercounter++>50)
+		{
+			KillTimer(hDlg, LOWORD(wParam));
+			MessageBox(hDlg, "Connection to Processor PC Lost or Not Established.", "",0);
+		}
+		else if (listcounter==savedsubjlist.size())
+		{
+			KillTimer(hDlg, LOWORD(wParam));
+			if (listcounter)
+			{
+				for (map<string,string> ::iterator it=savedsubjlist.begin(); it!=savedsubjlist.end(); it++)
+				{
+					res = SendDlgItemMessage(hDlg, IDC_SUBJID, CB_ADDSTRING, 0, (LPARAM)it->second.c_str());
+					savedfiles.push_back(it->first);
+				}
+				if ((id=SendDlgItemMessage(hDlg, IDC_SUBJID, CB_FINDSTRING, (WPARAM)-1, (LPARAM)hDDlg.subj))!=-1)
+				{
+					id = SendDlgItemMessage(hDlg, IDC_SUBJID, CB_SETCURSEL, id, 0);
+					SendMessage(hDlg, WM_COMMAND, MAKELONG(IDC_SUBJID, CBN_SELCHANGE), NULL);
+				}
+			}
+		}
+		break;
 
 	case WM_COMMAND:
 		switch((id=LOWORD(wParam)))
@@ -167,7 +213,7 @@ BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lPara
 			{
 				id = SendDlgItemMessage(hDlg, IDC_SUBJID, CB_GETCURSEL, 0, 0);
 				SendDlgItemMessage(hDlg, IDC_SUBJID, CB_GETLBTEXT, id, (LPARAM)buf);
-				SetDlgItemText(hDlg, IDC_SAVED_FILENAME, savedlist[string(buf)].c_str());
+				SetDlgItemText(hDlg, IDC_SAVED_FILENAME, savedfiles[id].c_str());
 
 				vector<string> mapheader;
 				mapheader.push_back("MAPFILENAME500");
@@ -182,8 +228,7 @@ BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lPara
 				string mapfile;
 				for (k=0; k<4; k++)
 				{
-					FulfillFile(buf, hDDlg.AppPath, savedlist[string(buf)].c_str());
-					res = ReadINI (errstr, buf, mapheader[k].c_str(), mapfile);
+					res = ReadINI (errstr, savedfiles[id].c_str(), mapheader[k].c_str(), mapfile);
 					SetDlgItemText(hDlg, idc[k], mapfile.c_str());
 				}
 			}
@@ -194,8 +239,6 @@ BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lPara
 		case IDC_900:
 		case IDC_1200:
 		case IDC_1800:
-//			if (HIWORD(wParam)==EN_KILLFOCUS)
-//				if (!ReadMAPfnames(hDlg, errstr)) MessageBox(hDlg, errstr, "Invalid MAP file.", 0); 
 			break;
 
 		case IDOK:
@@ -223,7 +266,6 @@ BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lPara
 			hDDlg.AdjustIDC_SUBJ();
 			for (int k(0); k<22; k++) //To show channel selection when the map is first open
 				InvalidateRect(hDDlg.hDlg, hDDlg.rtChan[k], 0);
-
 
 			//Peek the MAP file to get MAX
 			res = sscanfINI(errstr, hDDlg.mapfname[hDDlg.maprate[hDDlg.defaultRate]].c_str(), "NUMBER OF MAXIMA", "%d", &nMax);
@@ -260,21 +302,9 @@ BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lPara
 					EnableDlgItem(hDDlg.hDlg, IDC_SAVED1+k, 0);
 			}
 		case IDCANCEL:
+			listcounter=0;
+			savedfiles.clear();
 			EndDialog(hDlg, LOWORD(wParam));
-			break;
-
-		case IDC_OPEN:
-			fullfname[0]=0;
-			fileDlg.InitFileDlg(hDlg, hDDlg.hInst, hDDlg.AppPath);
-//			sprintf(fullfname, "%s.%s.waved", hDDlg.AppPath, hDDlg.subj);
-			if (fileDlg.FileOpenDlg(fullfname, fname, "settings file (*.SAVED)\0*.saved\0", "saved settings"))
-			{
-				if (OpenSettings(hDlg, fullfname)) lastfile = fullfname;
-			}
-			else
-			{
-				if (GetLastError()!=0) GetLastErrorStr(errstr), MessageBox (hDlg, errstr, "Fileopen dialog box error", 0);
-			}
 			break;
 		}
 		return 1;

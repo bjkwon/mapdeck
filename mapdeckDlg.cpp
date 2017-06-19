@@ -3,6 +3,9 @@
 
 #define DELAY 1010
 
+void OnGetSubj(const char *favedfile, const char *mapfile, const char *subjstr);
+
+
 int whichRect(CPoint pt, CRect rt1, CRect rt2, CRect rt3)
 {
 	if (rt1.PtInRect(pt))	return 1;
@@ -11,9 +14,9 @@ int whichRect(CPoint pt, CRect rt1, CRect rt2, CRect rt3)
 	else return 0;
 }
 
-void sendsocketWthread(CODE code, HWND hDlg, const char* msg2send);
 BOOL CALLBACK QuickProc(HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
 BOOL CALLBACK SettingsDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam);
+
 
 BOOL CALLBACK RatingDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
@@ -858,29 +861,38 @@ int CMapDeckDlg::Getsubj(string fname, char *estr)
 	}
 }
 
-int CMapDeckDlg::GetMAPfilenames(CString settingsfile, char *estr)
+vector<string> CMapDeckDlg::GetMAPfilenames(CString favedfile, char *estr)
 {
+	//in: saved ini file
+	//out: mapfname, vector of 4.
+
 	char fname[256], errStr[256];
 	char cde[32], dir[256], fn[256], et[256];
-	string str[4];
+	string sss, str[4];
+	vector<string> out;
 	try {
-		_splitpath (settingsfile.c_str(), cde, dir, fn, et);
+		_splitpath (favedfile.c_str(), cde, dir, fn, et);
 		if (cde[0]==0 && dir[0]==0)
-			sprintf(fname, "%s%s", AppPath, settingsfile.c_str()); 
+			sprintf(fname, "%s%s", AppPath, favedfile.c_str()); 
 		else
-			strcpy(fname, settingsfile.c_str()); 
+			strcpy(fname, favedfile.c_str()); 
 		if (ReadINI (errStr, fname, "MAPFILENAME500", str[0])<0) throw "MAPFILENAME500";
 		if (ReadINI (errStr, fname, "MAPFILENAME900", str[1])<0) throw "MAPFILENAME900";
 		if (ReadINI (errStr, fname, "MAPFILENAME1200", str[2])<0) throw "MAPFILENAME1200";
 		if (ReadINI (errStr, fname, "MAPFILENAME1800", str[3])<0) throw "MAPFILENAME1800";
 		for (int k(0);k<4; k++) 	
-		{mapfname[k] = mapdir; mapfname[k] += str[k];}
+		{
+			sss = mapdir; sss += str[k]; 
+			out.push_back(sss);
+		}
 	}
 	catch (const char* errstr)	{
 		sprintf(estr, "Item %s not found in MapDeck.ini", errstr);
-		return 0;
+		out.clear();
+		return out;
 	}
-	return 1;
+	estr[0]=0;
+	return out;
 }
 
 int CMapDeckDlg::ReadINI_UpdateScreen(string fname, char *estr)
@@ -942,10 +954,14 @@ try {
 	if (mapdir[strlen(mapdir)-1]!='\\') strcat(mapdir,"\\");
 	if (ReadINI (errStr, fname.c_str(), "LASTSUBJ", strRead)>0)
 	{
+
 		CString saved_set_file;
 		strcpy(subj, strRead.c_str());
 		saved_set_file.Format("%s%s.%s.saved.ini", AppPath, AppName, subj);
-		if (GetMAPfilenames(saved_set_file, errStr)>0)
+		vector<string> out;
+		out = GetMAPfilenames(saved_set_file, errStr);
+		for (int k=0; k<4; k++) mapfname[k] = out[k];
+		if (out.size()>0)
 		{
 			SetDlgItemText(IDC_SUBJ, subj);
 			lastopensettingfile = strRead;
@@ -953,11 +969,9 @@ try {
 			// This is where SET OPENTC is first sent, so let's send SET INIT_MAPDECK here
 			str = AppPath; str += AppRunName;
 			getVersionString(str.c_str(), buf, sizeof(buf));
-
-			DialogBox(hInst, MAKEINTRESOURCE(IDD_WAITING), hDlg, (DLGPROC)QuickProc); 
-
 			sformat(str, "SET INIT_MAPDECK %s", buf);
-			if (!demoOnly) sendsocketWthread(SETINIT, hDlg, str.c_str());
+			DWORD res1 = WaitForSingleObject(mt, INFINITE);
+			sendsocketWthread(SETINIT, hDlg, str.c_str());
 			//Now SET OPENTC
 			if (sscanfINI (errStr, saved_set_file.c_str(), "RATE", "%d", &rate)>0)
 				OnCommand(IDC_500+maprate[rate], NULL, 0);
@@ -1522,17 +1536,23 @@ void CMapDeckDlg::SetPresenter(SETCOMMAND command, string argstr)
 		str4pipe = "SET MAX "; str4pipe += argstr;
 		break;
 	}
-	if (!demoOnly) sendsocketWthread(SETPRESENTER, hDlg, str4pipe.c_str());
+	if (!demoOnly) 
+	{
+		DWORD res = WaitForSingleObject(mt, INFINITE);
+		sendsocketWthread(SETPRESENTER, hDlg, str4pipe.c_str());
+	}
 }
 
 
-void CMapDeckDlg::OnSocketComing(int code, char *msgbox)
+void CMapDeckDlg::OnSocketComing(bool success, int code, char *msgbox)
 {
+	if (!success)
+		Beep(1000,500);
 	size_t res;
 	vector<string> sorted;
 	char sent[256];
 	strcpy(sent, msgbox);
-	char *returned = msgbox + strlen(sent)+1;
+	char *pt, *returned = msgbox + strlen(sent)+1;
 	switch(code)
 	{
 	case SETPRESENTER:
@@ -1548,7 +1568,21 @@ void CMapDeckDlg::OnSocketComing(int code, char *msgbox)
 			}
 		}
 		break;
+	case GETSUBJ:
+		res = str2vect(sorted, sent, " ");
+		if (res>2 && sorted[1]=="SUBJ")
+		{
+			vector<string> out;
+			size_t res = str2vect(out, sent, "\t");
+			size_t len = strlen("SUCCESS ");
+			pt = returned + len ;
+			OnGetSubj(out[1].c_str(), out[0].c_str(), pt);
+		}
+
+		break;
 	}
+	res = SetEvent(mt);
+//	res = ReleaseMutex(mt);
 }
 
 

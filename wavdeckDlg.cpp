@@ -29,30 +29,6 @@ void SetControlPosFont(HWND hDlg, HDC hdc, int ID, HFONT _fnt, int XPOS, int YPO
 	if (XPOS>=0 && YPOS>=0)	MoveWindow( GetDlgItem(hDlg, ID), XPOS, YPOS, sz.cx, sz.cy, 1);
 }
 
-BOOL CALLBACK QuickProc(HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
-{
-	switch (umsg)
-	{
-	case WM_INITDIALOG:
-		hquick = hDlg;
-		sendsocketWthread(INITIALIZE, hDlg, "SET initialize");
-		break;
-	case WM_COMMAND:
-		if (LOWORD(wParam)==IDCANCEL)
-			demoOnly = true;
-		break;
-	case WM_SIZE:
-		break;
-	case WM_DESTROY:
-		hquick = NULL;
-		break;
-	default:
-		return FALSE;
-	}
-	return 1;
-}
-
-
 
 BOOL CALLBACK QSubmitDlgProc (HWND hDlg, UINT umsg, WPARAM wParam, LPARAM lParam)
 {
